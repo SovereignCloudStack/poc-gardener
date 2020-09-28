@@ -1,0 +1,836 @@
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: verticalpodautoscalers.autoscaling.k8s.io
+  annotations:
+    helm.sh/hook: crd-install
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  group: autoscaling.k8s.io
+  scope: Namespaced
+  names:
+    plural: verticalpodautoscalers
+    singular: verticalpodautoscaler
+    kind: VerticalPodAutoscaler
+    shortNames:
+      - vpa
+  version: v1beta1
+  versions:
+    - name: v1beta1
+      served: false
+      storage: false
+    - name: v1beta2
+      served: true
+      storage: true
+    - name: v1
+      served: true
+      storage: false
+  validation:
+    openAPIV3Schema:
+      type: object
+      properties:
+        spec:
+          type: object
+          # Compatibility with reconciliation tools such as Argo CD
+          # required: []
+          properties:
+            targetRef:
+              type: object
+            updatePolicy:
+              type: object
+              properties:
+                updateMode:
+                  type: string
+            resourcePolicy:
+              type: object
+              properties:
+                containerPolicies:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      containerName:
+                        type: string
+                      mode:
+                        type: string
+                        enum: ["Auto", "Off"]
+                      minAllowed:
+                        type: object
+                      maxAllowed:
+                        type: object
+                      controlledResources:
+                        type: array
+                        items:
+                          type: string
+                          enum: ["cpu", "memory"]
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: verticalpodautoscalercheckpoints.autoscaling.k8s.io
+  annotations:
+    helm.sh/hook: crd-install
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  group: autoscaling.k8s.io
+  scope: Namespaced
+  names:
+    plural: verticalpodautoscalercheckpoints
+    singular: verticalpodautoscalercheckpoint
+    kind: VerticalPodAutoscalerCheckpoint
+    shortNames:
+      - vpacheckpoint
+  version: v1beta1
+  versions:
+    - name: v1beta1
+      served: false
+      storage: false
+    - name: v1beta2
+      served: true
+      storage: true
+    - name: v1
+      served: true
+      storage: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vpa-vertical-pod-autoscaler-admission-controller
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admission-controller
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vpa-vertical-pod-autoscaler-recommender
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: recommender
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vpa-vertical-pod-autoscaler-updater
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: updater
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vpa-vertical-pod-autoscaler-admission-controller-tls
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admission-controller
+type: Opaque
+data:
+  ca.crt: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURZakNDQWtxZ0F3SUJBZ0lSQU94SWc5cmt6c0k2WGdRV1NjdkV6eXd3RFFZSktvWklodmNOQVFFTEJRQXcKT3pFNU1EY0dBMVVFQXhNd2RuQmhMWFpsY25ScFkyRnNMWEJ2WkMxaGRYUnZjMk5oYkdWeUxXRmtiV2x6YzJsdgpiaTFqYjI1MGNtOXNiR1Z5TUI0WERUSXdNRGt3T1RFeU16YzBORm9YRFRJeE1Ea3dPVEV5TXpjME5Gb3dPekU1Ck1EY0dBMVVFQXhNd2RuQmhMWFpsY25ScFkyRnNMWEJ2WkMxaGRYUnZjMk5oYkdWeUxXRmtiV2x6YzJsdmJpMWoKYjI1MGNtOXNiR1Z5TUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFwTU5FdUZiRQozaGdMR2VYYkYva0JiaUhKTmIyRkpsaHppbWdwcHF0OW92WmdQRVhMemhWQXlDMmxxVFRPek9WYnVpelZKUjNkCmc5amlFOURubjdvQXRiNHNWbDYvclpUMkZmb3NNdEtGK1hLaFdaZ05jaXlacnJ0V0FnNm11R1ZrSjg5b3RleUIKeFNXZlM0V2VwUWxuNU5URzlsbG1Fb2NBNmhvY04rSVBQV2RFSElzNTNmQTVONy80dFdDb05VaUVMQUcwYTdJegprQlE2dm5xY3VGS043TFpHZHZKa1kxWnVRdnV2WW9qb3lsME5aSjlqclptUm8zbzJpMlB1K0UzMWxucWRnbnQ4Ckx6WkVsUFRWcmlpc3JtS3VKbUMveHlaVzJuT1pnZXg1OUZmWUxiN1E5clBCSHNzamNmV01ESTI0YjZtckVsOVgKMjBZaHgvRTBXWjZnbXdJREFRQUJvMkV3WHpBT0JnTlZIUThCQWY4RUJBTUNBcVF3SFFZRFZSMGxCQll3RkFZSQpLd1lCQlFVSEF3RUdDQ3NHQVFVRkJ3TUNNQThHQTFVZEV3RUIvd1FGTUFNQkFmOHdIUVlEVlIwT0JCWUVGTEliClRLeVNVY29wb1pTNTlWZlQyWm5mYTJhR01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQVhIelV6Y1o2YzZjVHAKL3kvdEJMN0J1am00clNhcHpZWDlOTEVEYTRSUFJMOWYwWmVHZWNxOFpuK0R4MXJaWVYxdzdubW16Q295MVRZYwpvUmpSTnVJa0Ewa2ZoZmpqaDVTbk9QS3FOK3J1YUZNR0tSZ0Q0TUdQM2lIcElVNEhjaUhmTTl5ZHpyRnBFb3JDCkNPcUcwYTIwS2JlWWdudVhnSjFOek81UDEzMGRrR2dzemJzRjY0RDJkek55WHR3NDhJL1FIdmlwVkNUR3NrdXcKWkYrUU1iRC9Xa3VWM0VlWWZPMmptTzBlVnNCbkRUcy9HemlsWm1nSHc3K1FzcWhZQXNKMElxSER3NTVoaWV5ZwpmNiswQkZURFZSSkhQRHB5VWNxdmlDazhNUWpSNEdEWXl4RzZNRWx6cWNWcU1nWjV5RUV4Sm1xbjl6SGNiRGJKCk9VVnZoeGdnCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
+  tls.crt: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURkakNDQWw2Z0F3SUJBZ0lSQUo3TXdTOGNSMFFPUHdicmZrTUhGd0l3RFFZSktvWklodmNOQVFFTEJRQXcKT3pFNU1EY0dBMVVFQXhNd2RuQmhMWFpsY25ScFkyRnNMWEJ2WkMxaGRYUnZjMk5oYkdWeUxXRmtiV2x6YzJsdgpiaTFqYjI1MGNtOXNiR1Z5TUI0WERUSXdNRGt3T1RFeU16YzBORm9YRFRJeE1Ea3dPVEV5TXpjME5Gb3dKakVrCk1DSUdBMVVFQXhNYmRuQmhMWGRsWW1odmIyc3VhM1ZpWlMxemVYTjBaVzB1YzNaak1JSUJJakFOQmdrcWhraUcKOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQXNXanZmb2JCTmFtRWs3TFVRNG9PdW1RWjYzNE5IVjdrZkJkMwpaUDlFSW9DdFhkQXg1azd4V0I0TVJGRXNQS2tOOGFkVXRXRWNJRDRxbVN6cUZuNldmTlExOW8xYVM4YWV4dCs5ClBjcFVXYytZMEZtMHBta1d3OTJSbjRXeEVYUU14Z0trd3IyenhMaXZjR2VGcW1HNGx6TUxyNXRQM3UrYUd1Q1gKTWR3SWdleVhXZFg4Rk9UOGJpNjFjcmFoR0lTYTE1SlY3SFFFbXU4WmR5MG9lT0R1dWdyZHNHVEV4Q0hxcGZHKwpwbk9yVC9MMEFvZWZYcVMwVmtJd0FKM1VSSE9JZW5WdDJabitwR1BvaFk3Z21KZnNFOWRwbVFDV1A1SVpCQjkyCnUzYTVsMkF5cHBrNklOUSt2bEwvK0F5Vi9QLzIyT3VvQlRlMzlyalBrNDNoNlZEMHJRSURBUUFCbzRHSk1JR0cKTUE0R0ExVWREd0VCL3dRRUF3SUZvREFkQmdOVkhTVUVGakFVQmdnckJnRUZCUWNEQVFZSUt3WUJCUVVIQXdJdwpEQVlEVlIwVEFRSC9CQUl3QURBZkJnTlZIU01FR0RBV2dCU3lHMHlza2xIS0thR1V1ZlZYMDltWjMydG1oakFtCkJnTlZIUkVFSHpBZGdodDJjR0V0ZDJWaWFHOXZheTVyZFdKbExYTjVjM1JsYlM1emRtTXdEUVlKS29aSWh2Y04KQVFFTEJRQURnZ0VCQUZRUk9qRVNTYlF2dkNyVC9pWllkVDk0dDNaTXhZN2s1czZoVzJiRUpuM1VuTTkwdTFzQgpZeG40RVFlODkxaWFlNTdGVStBVlRYWWpmYnRxSmVlOWcvV1NiczkwNytVM3ZNZW8wQlVTY1RxMmZEWGZhNmlqClVRdSs4NHl5TXdML2o2enNnMTBPNDFmK1dpVzM3SXBOWFRkQVJOVGZZa2IySVZMN3BiNmpIN2FOUmxKQTRsQ24KazgrdndSNEFNdTVhaHcxZWNEemh1aU0xaDZtaE5qVG4wOFZYV214Nk5RR2wyNHJ1VlJCQnNQcjlwMnlsK0VmdQo3cnJJNjZac243WnRqMlYraGVLbjRpLzg5cHB1Y0IyMXBoSU5INVRJcGtnNk1Ha1JSSDk4Q2JkOHZKWkVkcFFzCjZJSEVZemxXbW9rSDRHL2VDS3dmK0toQ0dzbVdXa0RrbHU4PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg=="
+  tls.key: "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb2dJQkFBS0NBUUVBc1dqdmZvYkJOYW1FazdMVVE0b091bVFaNjM0TkhWN2tmQmQzWlA5RUlvQ3RYZEF4CjVrN3hXQjRNUkZFc1BLa044YWRVdFdFY0lENHFtU3pxRm42V2ZOUTE5bzFhUzhhZXh0KzlQY3BVV2MrWTBGbTAKcG1rV3c5MlJuNFd4RVhRTXhnS2t3cjJ6eExpdmNHZUZxbUc0bHpNTHI1dFAzdSthR3VDWE1kd0lnZXlYV2RYOApGT1Q4Ymk2MWNyYWhHSVNhMTVKVjdIUUVtdThaZHkwb2VPRHV1Z3Jkc0dURXhDSHFwZkcrcG5PclQvTDBBb2VmClhxUzBWa0l3QUozVVJIT0llblZ0MlpuK3BHUG9oWTdnbUpmc0U5ZHBtUUNXUDVJWkJCOTJ1M2E1bDJBeXBwazYKSU5RK3ZsTC8rQXlWL1AvMjJPdW9CVGUzOXJqUGs0M2g2VkQwclFJREFRQUJBb0lCQUNhZnJlUmgraFp3dlloYQpXcFFKcm9NdDMrYkJIcUhTVXZRaE44RXBRZkF4QzQxdEVqQU41OFZEWlhCS0s5TlpDc3dkbmZlUEdNeDhQRkgwCjBWSHNaVjd2NUgrMDduK28wbENCelhWeVkwTGFTMjZ3MlArUnlYOEM4ZjFFNGZQbXpCRWY2amJyamdPNklaZmIKTWVLU085blBKekFvSkE5cElxZlBWWnRwU0FEZzRKTCtyVzJ6ZTBwODZTOUdiQ0pJVEUvU3AzVng3UDhSRFE2cQpxbG5yWUp4R1AvVSthVklVZ0NNbHArOWZ5cWt5aDNJYzVKb1c0TnBkMCsvdUp6RldTb0Z6ZHJwVzJRU05ndmh2CkpwNk1hUkJlUzRIN3ZlZ01MLzE3NENKSzAyRStVeDRzTTM1REsrWmc3Ny9CeWl2TlpGZ2cvL2VWMENuVllibTAKdk93c0pnRUNnWUVBMlNlV1ZBZ1RJNCtwamFUMVFaZC9LaVMzeXBNaEpLVjk4TVZyeGdpV0FTSHVZaWdEVURBOAp1ZGIyUE9vYXVtNTJKZ2Q2VXpyM3gxUHRVQ3N1RDFWR3haNFdvQjJiVEx0VHVwZFdjUkFPK3hvWGtQTXBpZ085Ck5BR1J3ZkZuUDNQWWtNTWlQSmphV3ZwTUpRTFFBNzdoQUMrZUdzUDhCdlVoNklIZm5ZR09FZUVDZ1lFQTBTVkYKbXcyWHhLcXpCWkVMdklFRGRMY3RxbXhSVXVvMWxxWkhBQWhwZE5BdTdFcDVLamRhTk1NYnYxM25nbWtjREdoKwpXMDBHRlBaTVN1R3I3V3ZQbTV1WmI0cUVqa0NCRktJSkZjcW16ZDNYdjJGUWFVQUhScFg0THErWXExNys1KzBZCkZQU1dLZTJRNXBKMGNkaWx2amsvVnZ5cGJrUnpVQ2U5eXo0d0ZFMENnWUFxQkovdzZKTVRlWFBjWllQVFNrWWYKMkhUN3JKWm9LZUdCbWlHdGN2SGJqRDQ5SGZMdUxEZEQybFZSR2hkTDVaM1U0L09HY1UyS2N6SGpKa2ZHVGNEZwo4aUw4bmwzemJmZllqZm42N0ptSmV0WCtoUjZQaHdPd01YR0xybk5FOHR4L3ZsSThtWEwrMFptME82UVdaWFBSCi9tVEFWeFhJSHR5TnlidUVGWkp3NFFLQmdGQ01JanFOQ1o1Y2Y0WHRUcS9Tb0JvYlVpTUloR21DZWhFRENPVWkKV0RyODBwVitPUnZoSllTY2Y5czd0eVdxaFhyaDQ0Z1dLZmw0d2ZrMDRKb1hvMlV5aiswOVU3L1ZaK0VpWm8xVgo5dGZpVUcwTWRZT1RmVG5hR0RNaXZaR0NqSG1WL21oVHFtR0xkUHJYL0xDNzExbGpndGxsaFh0S01YNzFUMHN2Ck1DVWhBb0dBWDMzUzhTd2lZT1lrTVd5LzlWMFBTVEcvbUMzWjdRbnVGTTlXbmhuTFhmQmRvank1cjB0OEIvdGcKK0NWYyt6TW0yR3B4cHhRZkRoZkFDMnBaUndzcDQxWlVOSFI0bFVKTDc3aXdQaVFwWGVqcEZWazVhak9TZUFmNgpvem1rRHJ0dm43UEgxVDNGY0o3V05tZFZLSXdFQkJaZEpxVUNIbUF6SEZsTENpUmp5Y009Ci0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg=="
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vpa-vertical-pod-autoscaler-admission-controller
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admission-controller
+rules:
+  # system:vpa-target-reader
+  - apiGroups:
+      - "*"
+    resources:
+      - "*/scale"
+    verbs:
+      - get
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - replicationcontrollers
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+      - deployments
+      - replicasets
+      - statefulsets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+      - cronjobs
+    verbs:
+      - get
+      - list
+      - watch
+  # system:vpa-admission-controller
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - configmaps
+      - nodes
+      - limitranges
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "admissionregistration.k8s.io"
+    resources:
+      - mutatingwebhookconfigurations
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+  - apiGroups:
+      - "poc.autoscaling.k8s.io"
+    resources:
+      - verticalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "autoscaling.k8s.io"
+    resources:
+      - verticalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs:
+      - create
+      - update
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vpa-vertical-pod-autoscaler-recommender
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: recommender
+rules:
+  # system:metrics-reader
+  - apiGroups:
+      - "metrics.k8s.io"
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+  # system:vpa-actor
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - nodes
+      - limitranges
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+  - apiGroups:
+      - "poc.autoscaling.k8s.io"
+    resources:
+      - verticalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  - apiGroups:
+      - "autoscaling.k8s.io"
+    resources:
+      - verticalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  # system:vpa-checkpoint-actor
+  - apiGroups:
+      - "poc.autoscaling.k8s.io"
+    resources:
+      - verticalpodautoscalercheckpoints
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - patch
+      - delete
+  - apiGroups:
+      - "autoscaling.k8s.io"
+    resources:
+      - verticalpodautoscalercheckpoints
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+  # system:vpa-target-reader
+  - apiGroups:
+      - "*"
+    resources:
+      - "*/scale"
+    verbs:
+      - get
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - replicationcontrollers
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+      - deployments
+      - replicasets
+      - statefulsets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+      - cronjobs
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vpa-vertical-pod-autoscaler-updater
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: updater
+rules:
+  # system:vpa-actor
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - nodes
+      - limitranges
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+  - apiGroups:
+      - "poc.autoscaling.k8s.io"
+    resources:
+      - verticalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  - apiGroups:
+      - "autoscaling.k8s.io"
+    resources:
+      - verticalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  # system:vpa-target-reader
+  - apiGroups:
+      - "*"
+    resources:
+      - "*/scale"
+    verbs:
+      - get
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - replicationcontrollers
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+      - deployments
+      - replicasets
+      - statefulsets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+      - cronjobs
+    verbs:
+      - get
+      - list
+      - watch
+  # system:evictioner
+  - apiGroups:
+      - "apps"
+      - "extensions"
+    resources:
+      - replicasets
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - pods/eviction
+    verbs:
+      - create
+  # system:vpa-status-reader
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vpa-vertical-pod-autoscaler-admission-controller
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admission-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vpa-vertical-pod-autoscaler-admission-controller
+subjects:
+  - kind: ServiceAccount
+    name: vpa-vertical-pod-autoscaler-admission-controller
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vpa-vertical-pod-autoscaler-recommender
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: recommender
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vpa-vertical-pod-autoscaler-recommender
+subjects:
+  - kind: ServiceAccount
+    name: vpa-vertical-pod-autoscaler-recommender
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vpa-vertical-pod-autoscaler-updater
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: updater
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vpa-vertical-pod-autoscaler-updater
+subjects:
+  - kind: ServiceAccount
+    name: vpa-vertical-pod-autoscaler-updater
+    namespace: kube-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vpa-vertical-pod-autoscaler-admission-controller-metrics
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admission-controller
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8944
+      targetPort: http-metrics
+      protocol: TCP
+      name: http-metrics
+  selector:
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/component: admission-controller
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # name: vpa-vertical-pod-autoscaler-admission-controller
+  name: vpa-webhook
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admission-controller
+spec:
+  type: ClusterIP
+  ports:
+    # - port: 
+    - port: 443
+      targetPort: https
+      protocol: TCP
+      name: https
+  selector:
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/component: admission-controller
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vpa-vertical-pod-autoscaler-recommender-metrics
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: recommender
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8942
+      targetPort: http-metrics
+      protocol: TCP
+      name: http-metrics
+  selector:
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/component: recommender
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vpa-vertical-pod-autoscaler-updater-metrics
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: updater
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8943
+      targetPort: http-metrics
+      protocol: TCP
+      name: http-metrics
+  selector:
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/component: updater
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vpa-vertical-pod-autoscaler-admission-controller
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admission-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vertical-pod-autoscaler
+      app.kubernetes.io/instance: vpa
+      app.kubernetes.io/component: admission-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vertical-pod-autoscaler
+        app.kubernetes.io/instance: vpa
+        app.kubernetes.io/component: admission-controller
+      annotations:
+        checksum/secret: c7bae8c1eace986f96a0bed2dc90bf8c1a2cef07dd72421528a09026ab36bc87
+    spec:
+      serviceAccountName: vpa-vertical-pod-autoscaler-admission-controller
+      securityContext:
+        {}
+      containers:
+        - name: admission-controller
+          securityContext:
+            {}
+          image: "us.gcr.io/k8s-artifacts-prod/autoscaling/vpa-admission-controller:0.8.0"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --client-ca-file=/tls-secret/ca.crt
+            - --tls-cert-file=/tls-secret/tls.crt
+            - --tls-private-key=/tls-secret/tls.key
+            - --v=2
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: https
+              containerPort: 8000
+              protocol: TCP
+            - name: http-metrics
+              containerPort: 8944
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: http-metrics
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: http-metrics
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            {}
+          volumeMounts:
+            - name: tls-secret
+              mountPath: /tls-secret
+              readOnly: true
+      volumes:
+        - name: tls-secret
+          secret:
+            secretName: vpa-vertical-pod-autoscaler-admission-controller-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vpa-vertical-pod-autoscaler-recommender
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: recommender
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vertical-pod-autoscaler
+      app.kubernetes.io/instance: vpa
+      app.kubernetes.io/component: recommender
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vertical-pod-autoscaler
+        app.kubernetes.io/instance: vpa
+        app.kubernetes.io/component: recommender
+    spec:
+      serviceAccountName: vpa-vertical-pod-autoscaler-recommender
+      securityContext:
+        {}
+      containers:
+        - name: recommender
+          securityContext:
+            {}
+          image: "us.gcr.io/k8s-artifacts-prod/autoscaling/vpa-recommender:0.8.0"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --v=2
+          ports:
+            - name: http-metrics
+              containerPort: 8942
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: http-metrics
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: http-metrics
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vpa-vertical-pod-autoscaler-updater
+  labels:
+    helm.sh/chart: vertical-pod-autoscaler-2.1.0
+    app.kubernetes.io/name: vertical-pod-autoscaler
+    app.kubernetes.io/instance: vpa
+    app.kubernetes.io/version: "0.8.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: updater
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vertical-pod-autoscaler
+      app.kubernetes.io/instance: vpa
+      app.kubernetes.io/component: updater
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vertical-pod-autoscaler
+        app.kubernetes.io/instance: vpa
+        app.kubernetes.io/component: updater
+    spec:
+      serviceAccountName: vpa-vertical-pod-autoscaler-updater
+      securityContext:
+        {}
+      containers:
+        - name: updater
+          securityContext:
+            {}
+          image: "us.gcr.io/k8s-artifacts-prod/autoscaling/vpa-updater:0.8.0"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --v=2
+          ports:
+            - name: http-metrics
+              containerPort: 8943
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: http-metrics
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: http-metrics
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            {}
